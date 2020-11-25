@@ -10,18 +10,18 @@ extrafields = ''
 
 [slurm]                           # See processMeerKAT.py -h for documentation
 nodes = 1
-ntasks_per_node = 8
+ntasks_per_node = 20
 plane = 1
-mem = 232                         # Use this many GB of memory (per node)
-partition = 'Main'                # SLURM partition to use
+mem = 125                         # Use this many GB of memory (per node)
+partition = 'defq'                # SLURM partition to use
 exclude = ''                      # SLURM nodes to exclude
 time = '12:00:00'
 submit = False
-container = '/idia/software/containers/casa-stable-5.7.0.simg'
-mpi_wrapper = '/idia/software/pipelines/casa-pipeline-release-5.6.1-8.el7/bin/mpicasa'
+container = '/home/tho822/repos/casa-pipeline/casa-stable-5.7.0.simg'
+mpi_wrapper = '/home/tho822/repos/casa-pipeline/casa-pipeline-release-5.6.1-8.el7/bin/mpicasa'
 name = ''
 dependencies = ''
-account = 'b03-idia-ag'
+account = 'root'
 reservation = ''
 verbose = False
 precal_scripts = [('calc_refant.py',False,''), ('partition.py',True,'')]

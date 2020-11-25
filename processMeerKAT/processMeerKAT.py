@@ -36,11 +36,12 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)-15s %(levelname)s: %(message)s")
 
 #Set global limits for current ilifu cluster configuration
-TOTAL_NODES_LIMIT = 79
-CPUS_PER_NODE_LIMIT = 32
+TOTAL_NODES_LIMIT = 325
+CPUS_PER_NODE_LIMIT = 20
 NTASKS_PER_NODE_LIMIT = CPUS_PER_NODE_LIMIT
-MEM_PER_NODE_GB_LIMIT = 232 #237568 MB
+MEM_PER_NODE_GB_LIMIT = 125 #237568 MB
 MEM_PER_NODE_GB_LIMIT_HIGHMEM = 480 #491520 MB
+MEM_PER_NODE_GB_LIMIT_VERYHIGHMEM = 3000 #491520 MB
 
 #Set global values for paths and file names
 THIS_PROG = __file__
@@ -60,8 +61,8 @@ SELFCAL_CONFIG_KEYS = ['nloops','loop','cell','robust','imsize','wprojplanes','n
 IMAGING_CONFIG_KEYS = ['cell', 'robust', 'imsize', 'wprojplanes', 'niter', 'threshold', 'multiscale', 'nterms', 'gridder', 'deconvolver', 'restoringbeam', 'specmode', 'mask', 'rmsmap']
 SLURM_CONFIG_STR_KEYS = ['container','mpi_wrapper','partition','time','name','dependencies','exclude','account','reservation']
 SLURM_CONFIG_KEYS = ['nodes','ntasks_per_node','mem','plane','submit','precal_scripts','postcal_scripts','scripts','verbose'] + SLURM_CONFIG_STR_KEYS
-CONTAINER = '/idia/software/containers/casa-stable-5.7.0.simg'
-MPI_WRAPPER = '/idia/software/pipelines/casa-pipeline-release-5.6.1-8.el7/bin/mpicasa'
+CONTAINER = '/home/tho822/repos/casa-pipeline/casa-stable-5.7.0.simg'
+MPI_WRAPPER = '/home/tho822/repos/casa-pipeline/casa-pipeline-release-5.6.1-8.el7/bin/mpicasa'
 PRECAL_SCRIPTS = [('calc_refant.py',False,''),('partition.py',True,'')] #Scripts run before calibration at top level directory when nspw > 1
 POSTCAL_SCRIPTS = [('concat.py',False,''),('plotcal_spw.py', False, ''),('selfcal_part1.py',True,''),('selfcal_part2.py',False,''),('run_bdsf.py', False, ''),('make_pixmask.py', False, ''),('science_image.py', True, '')] #Scripts run after calibration at top level directory when nspw > 1
 SCRIPTS = [ ('validate_input.py',False,''),
@@ -182,7 +183,7 @@ def parse_args():
                             help="Distribute tasks of this block size before moving onto next node [default: 1; max: ntasks-per-node].")
     parser.add_argument("-m","--mem", metavar="num", required=False, type=int, default=MEM_PER_NODE_GB_LIMIT,
                         help="Use this many GB of memory (per node) for threadsafe scripts [default: {0}; max: {0}].".format(MEM_PER_NODE_GB_LIMIT))
-    parser.add_argument("-p","--partition", metavar="name", required=False, type=str, default="Main", help="SLURM partition to use [default: 'Main'].")
+    parser.add_argument("-p","--partition", metavar="name", required=False, type=str, default="defq", help="SLURM partition to use [default: 'defq'].")
     parser.add_argument("-T","--time", metavar="time", required=False, type=str, default="12:00:00", help="Time limit to use for all jobs, in the form d-hh:mm:ss [default: '12:00:00'].")
     parser.add_argument("-S","--scripts", action='append', nargs=3, metavar=('script','threadsafe','container'), required=False, type=parse_scripts, default=SCRIPTS,
                         help="Run pipeline with these scripts, in this order, using these containers (3rd value - empty string to default to [-c --container]). Is it threadsafe (2nd value)?")
@@ -194,7 +195,7 @@ def parse_args():
     parser.add_argument("-n","--name", metavar="unique", required=False, type=str, default='', help="Unique name to give this pipeline run (e.g. 'run1_'), appended to the start of all job names. [default: ''].")
     parser.add_argument("-d","--dependencies", metavar="list", required=False, type=str, default='', help="Comma-separated list (without spaces) of SLURM job dependencies (only used when nspw=1). [default: ''].")
     parser.add_argument("-e","--exclude", metavar="nodes", required=False, type=str, default='', help="SLURM worker nodes to exclude [default: ''].")
-    parser.add_argument("-A","--account", metavar="group", required=False, type=str, default='b03-idia-ag', help="SLURM accounting group to use (e.g. 'b05-pipelines-ag' - check 'sacctmgr show user $(whoami) -s format=account%%30,cluster%%15') [default: 'b03-idia-ag'].")
+    parser.add_argument("-A","--account", metavar="group", required=False, type=str, default='root', help="SLURM accounting group to use (e.g. 'root' - check 'sacctmgr show user $(whoami) -s format=account%%30,cluster%%15') [default: 'root'].")
     parser.add_argument("-r","--reservation", metavar="name", required=False, type=str, default='', help="SLURM reservation to use. [default: ''].")
 
     parser.add_argument("-l","--local", action="store_true", required=False, default=False, help="Build config file locally (i.e. without calling srun) [default: False].")
@@ -290,27 +291,30 @@ def validate_args(args,config,parser=None):
         raise_error(config, msg, parser)
 
     if args['mem'] > MEM_PER_NODE_GB_LIMIT:
-        if args['partition'] != 'HighMem':
+        if args['partition'] != 'm512' or args['partition'] != 'm3tb':
             msg = "The memory per node [-m --mem] must not exceed {0} (GB). You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT,args['mem'])
             raise_error(config, msg, parser)
-        elif args['mem'] > MEM_PER_NODE_GB_LIMIT_HIGHMEM:
-            msg = "The memory per node [-m --mem] must not exceed {0} (GB) when using 'HighMem' partition. You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT_HIGHMEM,args['mem'])
+        elif args['mem'] > MEM_PER_NODE_GB_LIMIT_HIGHMEM and args['partition'] == 'm512':
+            msg = "The memory per node [-m --mem] must not exceed {0} (GB) when using 'm512' partition. You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT_HIGHMEM,args['mem'])
+            raise_error(config, msg, parser)
+        elif args['mem'] > MEM_PER_NODE_GB_LIMIT_VERYHIGHMEM and args['partition'] == 'm3tb':
+            msg = "The memory per node [-m --mem] must not exceed {0} (GB) when using 'm3tb' partition. You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT_VERYHIGHMEM,args['mem'])
             raise_error(config, msg, parser)
 
     if args['plane'] > args['ntasks_per_node']:
         msg = "The value of [-P --plane] cannot be greater than the tasks per node [-t --ntasks-per-node] ({0}). You input {1}.".format(args['ntasks_per_node'],args['plane'])
         raise_error(config, msg, parser)
 
-    if args['account'] not in ['b03-idia-ag','b05-pipelines-ag']:
-        from platform import node
-        if 'slurm-login' in node() or 'slwrk' in node() or 'compute' in node():
-            accounts=os.popen("for f in $(sacctmgr show user $(whoami) -s format=account%30,cluster%15 | grep ilifu-slurm20 | grep -v 'Account\|--' | awk '{print $1}'); do echo -n $f,; done").read()[:-1].split(',')
-            if args['account'] not in accounts:
-                msg = "Accounting group '{0}' not recognised. Please select one of the following from your groups: {1}.".format(args['account'],accounts)
-                raise_error(config, msg, parser)
-        else:
-            msg = "Accounting group '{0}' not recognised. You're not using a SLURM node, so cannot query your accounts.".format(args['account'])
-            raise_error(config, msg, parser)
+    # if args['account'] not in ['b03-idia-ag','b05-pipelines-ag']:
+    #     from platform import node
+    #     if 'slurm-login' in node() or 'slwrk' in node() or 'compute' in node():
+    #         accounts=os.popen("for f in $(sacctmgr show user $(whoami) -s format=account%30,cluster%15 | grep ilifu-slurm20 | grep -v 'Account\|--' | awk '{print $1}'); do echo -n $f,; done").read()[:-1].split(',')
+    #         if args['account'] not in accounts:
+    #             msg = "Accounting group '{0}' not recognised. Please select one of the following from your groups: {1}.".format(args['account'],accounts)
+    #             raise_error(config, msg, parser)
+    #     else:
+    #         msg = "Accounting group '{0}' not recognised. You're not using a SLURM node, so cannot query your accounts.".format(args['account'])
+    #         raise_error(config, msg, parser)
 
 
 def write_command(script,args,name='job',mpi_wrapper=MPI_WRAPPER,container=CONTAINER,casa_script=True,casacore=False,logfile=True,plot=False,SPWs='',nspw=1):
@@ -383,7 +387,7 @@ def write_command(script,args,name='job',mpi_wrapper=MPI_WRAPPER,container=CONTA
 
         """ % SPWs.replace(',',' ').replace('0:','')
 
-    command += "{mpi_wrapper} singularity {singularity_call} {container} {casa_call} {script} {args}".format(**params)
+    command += "{mpi_wrapper} singularity {singularity_call} -B /home,/flush5,/scratch1 {container} {casa_call} {script} {args}".format(**params)
 
     #Get rid of annoying msmd output from casacore call
     if casacore:
@@ -463,8 +467,10 @@ def write_sbatch(script,args,nodes=1,tasks=16,mem=MEM_PER_NODE_GB_LIMIT,name="jo
 
     #If requesting all CPUs, user may as well use all memory
     if params['cpus'] * tasks == CPUS_PER_NODE_LIMIT:
-        if params['partition'] == 'HighMem':
+        if params['partition'] == 'm512':
             params['mem'] = MEM_PER_NODE_GB_LIMIT_HIGHMEM
+        if params['partition'] == 'm3tb':
+            params['mem'] = MEM_PER_NODE_GB_LIMIT_VERYHIGHMEM
         else:
             params['mem'] = MEM_PER_NODE_GB_LIMIT
 
@@ -502,13 +508,13 @@ def write_sbatch(script,args,nodes=1,tasks=16,mem=MEM_PER_NODE_GB_LIMIT,name="jo
     #SBATCH --cpus-per-task={cpus}
     #SBATCH --mem={mem}GB
     #SBATCH --job-name={runname}{name}
-    #SBATCH --distribution=plane={plane}
     #SBATCH --output={LOG_DIR}/%x-{ID}.out
     #SBATCH --error={LOG_DIR}/%x-{ID}.err
     #SBATCH --partition={partition}
     #SBATCH --time={time}
 
     export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+    module load singularity
 
     {command}"""
 
@@ -811,7 +817,7 @@ def write_all_bash_jobs_scripts(master,extn,IDs,dir='jobScripts',echo=True,prefi
     write_bash_job_script(master, errorScript, extn, do, 'find errors \(after pipeline has run\)', dir=dir, echo=echo)
     do = """echo "for ID in {$%s,}; do files=\$(ls %s/*\$ID* 2>/dev/null | wc -l); if [ \$((files)) != 0 ]; then logs=\$(ls %s/*\$ID* | sort -V); ls -f \$logs; cat \$(ls -tU \$logs) | grep INFO | head -n 1 | cut -d 'I' -f1; cat \$(ls -tr \$logs) | grep INFO | tail -n 1 | cut -d 'I' -f1; else echo %s/*\$ID* logs don\\'t exist \(yet\); fi; done" """ % (IDs,LOG_DIR,LOG_DIR,LOG_DIR)
     write_bash_job_script(master, timingScript, extn, do, 'display start and end timestamps \(after pipeline has run\)', dir=dir, echo=echo)
-    do = """echo "echo Removing the following: \$(ls -d *ms); %s rm -r *ms" """ % srun(slurm_kwargs, qos=True, time=10, mem=1)
+    do = """echo "echo Removing the following: \$(ls -d *ms); %s rm -r *ms" """ % srun(slurm_kwargs, qos=False, time=10, mem=1)
     write_bash_job_script(master, cleanupScript, extn, do, 'remove MSs/MMSs from this directory \(after pipeline has run\)', dir=dir, echo=echo)
 
 def write_bash_job_script(master,filename,extn,do,purpose,dir='jobScripts',echo=True,prefix=''):
@@ -847,7 +853,7 @@ def write_bash_job_script(master,filename,extn,do,purpose,dir='jobScripts',echo=
     if echo:
         master.write('echo Run ./{0}.sh to {1}.\n'.format(filename,purpose))
 
-def srun(arg_dict,qos=True,time=10,mem=4):
+def srun(arg_dict,qos=False,time=10,mem=4):
 
     """Return srun call, with certain parameters appended.
 
