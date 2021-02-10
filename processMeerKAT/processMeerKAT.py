@@ -291,11 +291,11 @@ def validate_args(args,config,parser=None):
         raise_error(config, msg, parser)
 
     if args['mem'] > MEM_PER_NODE_GB_LIMIT:
-        if args['partition'] != 'm512' or args['partition'] != 'm3tb':
+        if args['partition'] != 'm512gb' and args['partition'] != 'm3tb':
             msg = "The memory per node [-m --mem] must not exceed {0} (GB). You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT,args['mem'])
             raise_error(config, msg, parser)
-        elif args['mem'] > MEM_PER_NODE_GB_LIMIT_HIGHMEM and args['partition'] == 'm512':
-            msg = "The memory per node [-m --mem] must not exceed {0} (GB) when using 'm512' partition. You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT_HIGHMEM,args['mem'])
+        elif args['mem'] > MEM_PER_NODE_GB_LIMIT_HIGHMEM and args['partition'] == 'm512gb':
+            msg = "The memory per node [-m --mem] must not exceed {0} (GB) when using 'm512gb' partition. You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT_HIGHMEM,args['mem'])
             raise_error(config, msg, parser)
         elif args['mem'] > MEM_PER_NODE_GB_LIMIT_VERYHIGHMEM and args['partition'] == 'm3tb':
             msg = "The memory per node [-m --mem] must not exceed {0} (GB) when using 'm3tb' partition. You input {1} (GB).".format(MEM_PER_NODE_GB_LIMIT_VERYHIGHMEM,args['mem'])
@@ -481,7 +481,7 @@ def write_sbatch(script,args,nodes=1,tasks=16,mem=MEM_PER_NODE_GB_LIMIT,name="jo
 
     #If requesting all CPUs, user may as well use all memory
     if params['cpus'] * tasks == CPUS_PER_NODE_LIMIT:
-        if params['partition'] == 'm512':
+        if params['partition'] == 'm512gb':
             params['mem'] = MEM_PER_NODE_GB_LIMIT_HIGHMEM
         if params['partition'] == 'm3tb':
             params['mem'] = MEM_PER_NODE_GB_LIMIT_VERYHIGHMEM
